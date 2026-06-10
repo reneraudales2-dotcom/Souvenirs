@@ -1,5 +1,5 @@
 // 1. Configuración de Supabase (Coloca aquí tus credenciales reales)
-const SUPABASE_URL = "https://hhrpjyofxmyzrdahqutm.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://hhrpjyofxmyzrdahqutm.supabase.co";
 const SUPABASE_KEY = "sb_publishable_cV1Qsy3U-htu9UvHKB-F9Q_YG_JhNpC";
 
 // Fíjate en el cambio aquí: usamos el objeto global original que viene del CDN
