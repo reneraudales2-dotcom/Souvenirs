@@ -2,7 +2,8 @@
 const SUPABASE_URL = "https://hhrpjyofxmyzrdahqutm.supabase.co/rest/v1/";
 const SUPABASE_KEY = "sb_publishable_cV1Qsy3U-htu9UvHKB-F9Q_YG_JhNpC";
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Fíjate en el cambio aquí: usamos el objeto global original que viene del CDN
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Variables globales para el estado del sistema
 let carrito = [];
