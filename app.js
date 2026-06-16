@@ -114,7 +114,7 @@ function actualizarInterfazCarrito() {
 }
 
 // ==========================================
-// FASE 3: PROCESAR VENTA (ESCRITURA EN SUPABASE)
+// FASE 3: ENVIAR VENTA A MAKE.COM (EXCEL ONEDRIVE)
 // ==========================================
 btnPagar.addEventListener('click', async () => {
     if (carrito.length === 0) {
@@ -125,49 +125,34 @@ btnPagar.addEventListener('click', async () => {
     btnPagar.disabled = true;
     btnPagar.innerText = "Procesando...";
 
+    // Tu URL real de Make.com
+    const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/xbk57afdr4761jqan7bfkgzynx7fp77x";
+
     try {
-        // Recorremos cada artículo comprado en el carrito
-        for (const item of carrito) {
-            // 1. Obtener el stock actual directamente de la base de datos para estar seguros
-            const { data: prod, error: errFetch } = await supabase
-                .from('productos')
-                .select('stock')
-                .eq('id', item.id)
-                .single();
+        // Enviamos todo el carrito en una sola petición a Make
+        const response = await fetch(MAKE_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fecha: new Date().toISOString(),
+                productos_vendidos: carrito
+            })
+        });
 
-            if (errFetch || prod.stock < item.cantidad) {
-                throw new Error(`Stock insuficiente o error con el producto ${item.nombre}.`);
-            }
-
-            // 2. Calcular nuevo stock
-            const nuevoStock = prod.stock - item.cantidad;
-
-            // 3. Actualizar la tabla de productos (restar stock)
-            const { error: errUpdate } = await supabase
-                .from('productos')
-                .update({ stock: nuevoStock })
-                .eq('id', item.id);
-
-            if (errUpdate) throw errUpdate;
-
-            // 4. Registrar el movimiento en la tabla de ventas
-            const { error: errVenta } = await supabase
-                .from('ventas')
-                .insert([
-                    { 
-                        producto_id: item.id, 
-                        cantidad: item.cantidad, 
-                        total: item.precio * item.cantidad 
-                    }
-                ]);
-
-            if (errVenta) throw errVenta;
+        if (!response.ok) {
+            throw new Error("No se pudo conectar con el servidor de automatización.");
         }
 
-        alert("¡Venta procesada con éxito!");
-        carrito = []; // Limpiamos carrito local
+        alert("¡Venta enviada y procesada con éxito!");
+        carrito = []; // Limpiamos el carrito local
         actualizarInterfazCarrito();
-        await cargarProductos(); // Recargamos el catálogo visual desde Supabase
+        
+        // Refrescamos los productos en pantalla
+        if (typeof cargarProductos === 'function') {
+            await cargarProductos();
+        }
 
     } catch (error) {
         console.error("Error al procesar la venta:", error);
@@ -177,6 +162,3 @@ btnPagar.addEventListener('click', async () => {
         btnPagar.innerText = "Procesar Venta";
     }
 });
-
-// Arrancar la aplicación al cargar la página
-window.onload = cargarProductos;
