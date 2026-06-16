@@ -1,120 +1,159 @@
-// 1. Configuración de Supabase
+// ==========================================
+// 1. CONFIGURACIÓN E INICIALIZACIÓN DE APIS
+// ==========================================
 const SUPABASE_URL = "https://hhrpjyofxmyzrdahqutm.supabase.co";
 const SUPABASE_KEY = "sb_publishable_cV1Qsy3U-htu9UvHKB-F9Q_YG_JhNpC";
+const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/xbk57afdr4761jqan7bfkgzynx7fp77x";
 
-// Inicialización limpia usando la última versión del SDK
+// Cliente global de Supabase (usado para LEER el catálogo rápido)
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Variables globales para el estado del sistema
+// Variables globales para el estado de la aplicación
 let carrito = [];
-let baseDeDatosProductos = []; // Guardará una copia local para validar stock rápidamente
+let baseDeDatosProductos = []; 
 
-// Referencias del DOM
+// Referencias a los elementos del DOM (HTML)
 const gridProductos = document.getElementById('grid-productos');
 const carritoItems = document.getElementById('carrito-items');
 const cartTotal = document.getElementById('cart-total');
 const btnPagar = document.getElementById('btn-pagar');
 
 // ==========================================
-// FASE 1: LEER PRODUCTOS DE SUPABASE
+// 2. FASE 1: LEER PRODUCTOS DESDE SUPABASE
 // ==========================================
 async function cargarProductos() {
-    const { data: productos, error } = await supabase
-        .from('productos')
-        .select('*')
-        .order('nombre', { ascending: true });
+    try {
+        // Consultamos la tabla de productos
+        const { data, error } = await supabase
+            .from('productos')
+            .select('*');
 
-    if (error) {
-        console.error('Error cargando productos:', error);
-        gridProductos.innerHTML = `<p class="text-red-500">Error al cargar el inventario.</p>`;
-        return;
+        if (error) throw error;
+
+        baseDeDatosProductos = data || [];
+        renderizarCatalogo(baseDeDatosProductos);
+
+    } catch (error) {
+        console.error("Error al cargar productos de Supabase:", error);
+        gridProductos.innerHTML = `
+            <div class="col-span-full bg-white p-6 rounded-xl shadow-sm border border-red-200 text-center text-red-600">
+                <p class="font-bold">⚠️ Error de conexión</p>
+                <p class="text-sm text-gray-500">${error.message}</p>
+            </div>
+        `;
     }
-
-    baseDeDatosProductos = productos; // Guardamos copia local
-    renderizarProductos(productos);
 }
 
-function renderizarProductos(productos) {
+// ==========================================
+// 3. FASE 2: RENDERIZAR E INTERFAZ DEL CARRITO
+// ==========================================
+function renderizarCatalogo(productos) {
     if (productos.length === 0) {
-        gridProductos.innerHTML = `<p class="text-gray-500">No hay productos en la base de datos. Agrega algunos en la consola de Supabase.</p>`;
+        gridProductos.innerHTML = `
+            <div class="col-span-full bg-white p-8 rounded-xl shadow-sm border border-gray-200 text-center">
+                <span class="text-4xl block mb-2">📦</span>
+                <p class="text-gray-500 font-medium">No hay productos en la base de datos.</p>
+                <p class="text-xs text-gray-400 mt-1">Agrega algunos artículos en el panel de Supabase para verlos aquí.</p>
+            </div>
+        `;
         return;
     }
 
     gridProductos.innerHTML = productos.map(prod => `
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-between">
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between">
             <div>
                 <h3 class="font-bold text-lg text-gray-800">${prod.nombre}</h3>
-                <p class="text-gray-500 text-sm mb-2">Disponibles: <span id="stock-id-${prod.id}" class="font-semibold ${prod.stock < 5 ? 'text-red-500' : 'text-gray-700'}">${prod.stock}</span></p>
+                <p class="text-sm text-gray-400 mt-1">Disponible: ${prod.stock} uds</p>
             </div>
-            <div class="flex justify-between items-center mt-4">
-                <span class="text-xl font-bold text-blue-600">L. ${prod.precio.toFixed(2)}</span>
+            <div class="flex justify-between items-center mt-6">
+                <span class="text-xl font-black text-blue-600">L. ${parseFloat(prod.precio).toFixed(2)}</span>
                 <button 
-                    id="btn-add-${prod.id}"
-                    onclick="agregarAlCarrito(${prod.id})"
-                    ${prod.stock === 0 ? 'disabled class="bg-gray-300 text-gray-500 px-3 py-1.5 rounded-md cursor-not-allowed"' : 'class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md transition"'}
+                    onclick="agregarAlCarrito(${prod.id})" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded-lg transition-all transform active:scale-95"
                 >
-                    ${prod.stock === 0 ? 'Agotado' : 'Agregar'}
+                    + Agregar
                 </button>
             </div>
         </div>
     `).join('');
 }
 
-// ==========================================
-// FASE 2: GESTIÓN DEL CARRITO EN MEMORIA
-// ==========================================
-window.agregarAlCarrito = function(id) {
-    const productoOriginal = baseDeDatosProductos.find(p => p.id === id);
-    const itemEnCarrito = carrito.find(item => item.id === id);
-    
-    // Validar si queda stock suficiente disponible
-    const cantidadActual = itemEnCarrito ? itemEnCarrito.cantidad : 0;
-    if (cantidadActual >= productoOriginal.stock) {
-        alert(`¡Lo siento! No hay más existencias de ${productoOriginal.nombre}.`);
+function agregarAlCarrito(id) {
+    const producto = baseDeDatosProductos.find(p => p.id === id);
+    if (!producto) return;
+
+    if (producto.stock <= 0) {
+        alert("Este producto no cuenta con stock disponible.");
         return;
     }
 
+    const itemEnCarrito = carrito.find(item => item.id === id);
     if (itemEnCarrito) {
+        if (itemEnCarrito.cantidad >= producto.stock) {
+            alert("No puedes agregar más unidades de las disponibles en el inventario.");
+            return;
+        }
         itemEnCarrito.cantidad++;
     } else {
-        carrito.push({
-            id: productoOriginal.id,
-            nombre: productoOriginal.nombre,
-            precio: productoOriginal.precio,
-            cantidad: 1
-        });
+        carrito.push({ ...producto, cantidad: 1 });
     }
 
     actualizarInterfazCarrito();
-};
+}
+
+function cambiarCantidad(id, cambio) {
+    const item = carrito.find(i => i.id === id);
+    if (!item) return;
+
+    const productoOriginal = baseDeDatosProductos.find(p => p.id === id);
+
+    item.cantidad += cambio;
+
+    if (item.cantidad > productoOriginal.stock) {
+        alert("Límite de stock alcanzado.");
+        item.cantidad = productoOriginal.stock;
+    }
+
+    if (item.cantidad <= 0) {
+        carrito = carrito.filter(i => i.id !== id);
+    }
+
+    actualizarInterfazCarrito();
+}
 
 function actualizarInterfazCarrito() {
     if (carrito.length === 0) {
-        carritoItems.innerHTML = `<p class="text-gray-400 text-sm">El carrito está vacío.</p>`;
+        carritoItems.innerHTML = `
+            <div class="text-center py-8 text-gray-400">
+                <span class="text-4xl block mb-2">🛍️</span>
+                <p class="text-sm">El carrito está vacío.</p>
+                <p class="text-xs text-gray-400 mt-1">Presiona "Agregar" en cualquier producto.</p>
+            </div>
+        `;
         cartTotal.innerText = "L. 0.00";
         return;
     }
 
-    let total = 0;
-    carritoItems.innerHTML = carrito.map(item => {
-        const subtotal = item.precio * item.cantidad;
-        total += subtotal;
-        return `
-            <div class="flex justify-between items-center text-sm border-b pb-2">
-                <div>
-                    <p class="font-semibold text-gray-800">${item.nombre}</p>
-                    <p class="text-gray-500">L. ${item.precio.toFixed(2)} x ${item.cantidad}</p>
-                </div>
-                <span class="font-bold text-gray-700">L. ${subtotal.toFixed(2)}</span>
+    carritoItems.innerHTML = carrito.map(item => `
+        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+            <div class="flex-1 min-w-0 pr-2">
+                <h4 class="font-bold text-sm text-gray-800 truncate">${item.nombre}</h4>
+                <p class="text-xs text-blue-600 font-semibold">L. ${parseFloat(item.precio).toFixed(2)} c/u</p>
             </div>
-        `;
-    }).join('');
+            <div class="flex items-center space-x-2">
+                <button onclick="cambiarCantidad(${item.id}, -1)" class="w-6 h-6 bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold flex items-center justify-center">-</button>
+                <span class="text-sm font-bold w-6 text-center">${item.cantidad}</span>
+                <button onclick="cambiarCantidad(${item.id}, 1)" class="w-6 h-6 bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold flex items-center justify-center">+</button>
+            </div>
+        </div>
+    `).join('');
 
+    const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
     cartTotal.innerText = `L. ${total.toFixed(2)}`;
 }
 
 // ==========================================
-// FASE 3: ENVIAR VENTA A MAKE.COM (EXCEL ONEDRIVE)
+// 4. FASE 3: ENVIAR VENTA A MAKE.COM (EXCEL)
 // ==========================================
 btnPagar.addEventListener('click', async () => {
     if (carrito.length === 0) {
@@ -125,11 +164,8 @@ btnPagar.addEventListener('click', async () => {
     btnPagar.disabled = true;
     btnPagar.innerText = "Procesando...";
 
-    // Tu URL real de Make.com
-    const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/xbk57afdr4761jqan7bfkgzynx7fp77x";
-
     try {
-        // Enviamos todo el carrito en una sola petición a Make
+        // Disparamos la venta directamente hacia el webhook de Make
         const response = await fetch(MAKE_WEBHOOK_URL, {
             method: 'POST',
             headers: {
@@ -142,17 +178,13 @@ btnPagar.addEventListener('click', async () => {
         });
 
         if (!response.ok) {
-            throw new Error("No se pudo conectar con el servidor de automatización.");
+            throw new Error("No se pudo conectar con el servidor de Make.com");
         }
 
         alert("¡Venta enviada y procesada con éxito!");
-        carrito = []; // Limpiamos el carrito local
+        carrito = [];
         actualizarInterfazCarrito();
-        
-        // Refrescamos los productos en pantalla
-        if (typeof cargarProductos === 'function') {
-            await cargarProductos();
-        }
+        await cargarProductos();
 
     } catch (error) {
         console.error("Error al procesar la venta:", error);
@@ -162,3 +194,6 @@ btnPagar.addEventListener('click', async () => {
         btnPagar.innerText = "Procesar Venta";
     }
 });
+
+// Inicialización automática al cargar el archivo
+cargarProductos();
