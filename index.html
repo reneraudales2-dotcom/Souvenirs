@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Punto de Venta · Iglesia</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -324,6 +326,34 @@
             font-size: 1.1rem;
         }
         .modal-box { position: relative; }
+
+        /* ---------- Escáner de código de barras ---------- */
+        .search-row { display: flex; gap: 10px; margin-bottom: 16px; }
+        .search-row .search-box { margin-bottom: 0; flex: 1; }
+        .btn-scan {
+            background: var(--teal); color: white; border: none;
+            font-weight: 700; font-size: 0.85rem; padding: 0 16px; border-radius: 10px;
+            cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+        }
+        .btn-scan:hover { background: var(--teal-deep); }
+        #lector-camara { width: 100%; border-radius: 12px; overflow: hidden; background: #000; min-height: 180px; }
+        .scanner-hint { text-align: center; font-size: 0.8rem; color: var(--ink-soft); margin-top: 10px; }
+        .scanner-status { text-align: center; font-size: 0.88rem; font-weight: 700; margin-top: 10px; min-height: 20px; }
+        .scanner-status.found { color: var(--ok); }
+        .scanner-status.notfound { color: var(--danger); }
+
+        .codigo-row { display: flex; gap: 8px; align-items: center; }
+        .codigo-row .field-group { flex: 1; margin-bottom: 0; }
+        .btn-icon-small {
+            background: var(--paper); border: 1px solid var(--line); color: var(--ink);
+            border-radius: 9px; padding: 11px 12px; cursor: pointer; font-size: 0.9rem; white-space: nowrap;
+        }
+        .btn-icon-small:hover { background: var(--line); }
+        .etiqueta-preview {
+            text-align: center; margin-top: 12px; padding: 14px;
+            background: var(--paper); border-radius: 10px; border: 1px dashed var(--line);
+        }
+        .prod-barcode { font-size: 0.72rem; color: var(--ink-soft); margin: 2px 0 0; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -352,9 +382,12 @@
                 </div>
             </div>
  
-            <div class="search-box">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="buscador" placeholder="Buscar artículo..." autocomplete="off">
+            <div class="search-row">
+                <div class="search-box">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="text" id="buscador" placeholder="Buscar artículo o código..." autocomplete="off">
+                </div>
+                <button class="btn-scan" id="btn-escanear-venta" title="Escanear código de barras">📷 Escanear</button>
             </div>
  
             <div id="grid-productos">
@@ -429,6 +462,22 @@
                 <label for="input-stock">Cantidad disponible</label>
                 <input type="number" id="input-stock" placeholder="0" step="1" min="0">
             </div>
+            <div class="field-group">
+                <label for="input-codigo-barras">Código de barras (opcional)</label>
+                <div class="codigo-row">
+                    <div class="field-group">
+                        <input type="text" id="input-codigo-barras" placeholder="Ej. AG-K3F8Z1" autocomplete="off">
+                    </div>
+                    <button type="button" class="btn-icon-small" id="btn-generar-codigo" title="Generar código único">🎲 Generar</button>
+                    <button type="button" class="btn-icon-small" id="btn-escanear-codigo-producto" title="Escanear un código ya impreso">📷</button>
+                </div>
+                <div class="etiqueta-preview" id="etiqueta-preview" style="display:none;">
+                    <svg id="svg-etiqueta"></svg>
+                    <div style="margin-top:10px;">
+                        <button type="button" class="btn-modal ghost" id="btn-imprimir-etiqueta" style="flex:none; padding: 8px 18px; font-size:0.82rem;">🖨️ Imprimir etiqueta</button>
+                    </div>
+                </div>
+            </div>
             <input type="hidden" id="input-id-original">
             <div class="modal-actions">
                 <button class="btn-modal danger" id="btn-eliminar-producto" style="display:none;">Eliminar</button>
@@ -437,7 +486,18 @@
         </div>
     </div>
  
+    <!-- Modal: escáner de código de barras (cámara) -->
+    <div class="modal-overlay" id="modal-scanner">
+        <div class="modal-box wide">
+            <button class="modal-close-x" data-cerrar="modal-scanner" id="btn-cerrar-scanner">✕</button>
+            <h3 id="titulo-modal-scanner">📷 Escanear código de barras</h3>
+            <p class="modal-sub" id="subtitulo-modal-scanner">Apunta la cámara al código del producto.</p>
+            <div id="lector-camara"></div>
+            <p class="scanner-status" id="scanner-status"></p>
+            <p class="scanner-hint">Si no ves la imagen de la cámara, revisa los permisos del navegador.</p>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
- 
