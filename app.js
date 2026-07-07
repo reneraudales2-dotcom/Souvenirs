@@ -767,5 +767,37 @@ btnImprimirEtiqueta.addEventListener('click', () => {
     ventana.document.close();
 });
 
+// ==========================================
+// 9. TIEMPO REAL — la app se actualiza sola
+// ==========================================
+// Escucha cualquier cambio (insert/update/delete) en la tabla "productos",
+// venga de donde venga (la app, Supabase directo, otro dispositivo, etc.)
+// y refresca el catálogo automáticamente, sin que el usuario recargue la página.
+let refrescoPendiente = null;
+function refrescarConDebounce() {
+    // Si llegan varios cambios casi juntos (ej. una venta con varios artículos),
+    // esperamos un poquito y hacemos un solo refresco en vez de varios seguidos.
+    clearTimeout(refrescoPendiente);
+    refrescoPendiente = setTimeout(() => {
+        cargarProductos();
+    }, 400);
+}
+
+function suscribirCambiosEnTiempoReal() {
+    supabase
+        .channel('productos-en-vivo')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'productos' },
+            () => refrescarConDebounce()
+        )
+        .subscribe((estado) => {
+            if (estado === 'SUBSCRIBED') {
+                console.log('Tiempo real activo: la app se sincroniza sola con Supabase.');
+            }
+        });
+}
+
 // Inicialización automática al cargar el archivo
 cargarProductos();
+suscribirCambiosEnTiempoReal();
