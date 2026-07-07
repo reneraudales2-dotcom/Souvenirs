@@ -3,7 +3,6 @@
 // ==========================================
 const SUPABASE_URL = "https://hhrpjyofxmyzrdahqutm.supabase.co";
 const SUPABASE_KEY = "sb_publishable_cV1Qsy3U-htu9UvHKB-F9Q_YG_JhNpC";
-const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/xbk57afdr4761jqan7bfkgzynx7fp77x";
 
 // Contraseña simple para entrar al "Modo inventario" (agregar/editar/eliminar artículos).
 // Esto NO es seguridad real (cualquiera con el código fuente puede verla),
@@ -18,8 +17,29 @@ let carrito = [];
 let baseDeDatosProductos = [];
 let terminoBusqueda = "";
 let modoAdmin = false;
+let categoriaActiva = "todos";
+
+// ==========================================
+// 1b. CATEGORÍAS (sellos rubricados por producto)
+// ==========================================
+// Se detectan por palabras clave en el nombre — no requiere tocar la base de datos.
+const CATEGORIAS = [
+    { id: 'lectura',    etiqueta: 'Lectura',            color: 'var(--cat-lectura)',    claves: ['BIBLIA', 'LIBRO', 'PAN DIARIO', 'PROPÓSITO', 'HÁBITOS', 'HOMBRES', 'LEYES', 'INCENDIARIO'] },
+    { id: 'accesorios', etiqueta: 'Accesorios',         color: 'var(--cat-accesorios)', claves: ['LLAVERO', 'PULSERA', 'PIN', 'PORTA CARNET', 'RIÑONERA'] },
+    { id: 'papeleria',  etiqueta: 'Papelería',          color: 'var(--cat-papeleria)',  claves: ['AGENDA', 'LAPIZ', 'LÁPIZ', 'STICKER'] },
+    { id: 'hogar',      etiqueta: 'Vestuario y hogar',  color: 'var(--cat-hogar)',      claves: ['GORRA', 'SUETER', 'SUÉTER', 'TAZA', 'TERMO'] },
+];
+
+function categorizarProducto(nombre) {
+    const n = nombre.toUpperCase();
+    for (const cat of CATEGORIAS) {
+        if (cat.claves.some(clave => n.includes(clave))) return cat;
+    }
+    return { id: 'general', etiqueta: 'General', color: 'var(--cat-general)' };
+}
 
 const gridProductos = document.getElementById('grid-productos');
+const categoriaChips = document.getElementById('categoria-chips');
 const carritoItems = document.getElementById('carrito-items');
 const cartTotal = document.getElementById('cart-total');
 const btnPagar = document.getElementById('btn-pagar');
@@ -122,6 +142,7 @@ async function cargarProductos() {
 
         baseDeDatosProductos = data || [];
         setEstadoConexion('ok', 'Servidor en línea');
+        renderizarChipsCategoria();
         renderizarCatalogo();
 
     } catch (error) {
@@ -154,17 +175,50 @@ function mostrarEstadoError(error) {
     document.getElementById('btn-reintentar')?.addEventListener('click', cargarProductos);
 }
 
+function renderizarChipsCategoria() {
+    const presentes = new Set(baseDeDatosProductos.map(p => categorizarProducto(p.nombre).id));
+    const categoriasVisibles = CATEGORIAS.filter(c => presentes.has(c.id));
+
+    const chips = [
+        { id: 'todos', etiqueta: 'Todos', color: null },
+        ...categoriasVisibles,
+        ...(presentes.has('general') ? [{ id: 'general', etiqueta: 'General', color: 'var(--cat-general)' }] : [])
+    ];
+
+    categoriaChips.innerHTML = chips.map(c => `
+        <button
+            class="chip-categoria ${categoriaActiva === c.id ? 'activo' : ''}"
+            style="${c.color ? `--chip-color:${c.color};` : ''}"
+            onclick="seleccionarCategoria('${c.id}')"
+        >
+            ${c.color ? '<span class="punto"></span>' : ''}
+            ${escapeHtml(c.etiqueta)}
+        </button>
+    `).join('');
+}
+
+function seleccionarCategoria(id) {
+    categoriaActiva = id;
+    renderizarChipsCategoria();
+    renderizarCatalogo();
+}
+
 // ==========================================
 // 3. RENDERIZAR CATÁLOGO Y CARRITO
 // ==========================================
 function renderizarCatalogo() {
     const filtro = terminoBusqueda.trim().toLowerCase();
-    const productos = filtro
-        ? baseDeDatosProductos.filter(p =>
+
+    let productos = baseDeDatosProductos;
+    if (categoriaActiva !== 'todos') {
+        productos = productos.filter(p => categorizarProducto(p.nombre).id === categoriaActiva);
+    }
+    if (filtro) {
+        productos = productos.filter(p =>
             p.nombre.toLowerCase().includes(filtro) ||
             (p.codigo_barras && p.codigo_barras.toLowerCase().includes(filtro))
-          )
-        : baseDeDatosProductos;
+        );
+    }
 
     contadorProductos.textContent = `${baseDeDatosProductos.length} artículo${baseDeDatosProductos.length === 1 ? '' : 's'}`;
 
@@ -194,10 +248,12 @@ function renderizarCatalogo() {
         const agotado = prod.stock <= 0;
         const stockBajo = prod.stock > 0 && prod.stock <= 3;
         const idAttr = escapeHtml(prod.id);
+        const cat = categorizarProducto(prod.nombre);
         return `
-        <div class="prod-card ${agotado ? 'agotado' : ''}">
+        <div class="prod-card ${agotado ? 'agotado' : ''}" style="--cat-color:${cat.color};">
             <button class="btn-edit-prod" onclick="abrirEdicionProducto(${idAttr})" title="Editar artículo">✏️</button>
             <div>
+                <span class="prod-sello"><span class="punto"></span>${escapeHtml(cat.etiqueta)}</span>
                 <h3 class="prod-name">${escapeHtml(prod.nombre)}</h3>
                 <p class="prod-stock ${stockBajo ? 'low' : ''}">${agotado ? 'Agotado' : `Disponible: ${prod.stock} uds`}</p>
                 ${prod.codigo_barras ? `<p class="prod-barcode">🏷️ ${escapeHtml(prod.codigo_barras)}</p>` : ''}
@@ -526,30 +582,6 @@ async function registrarVentaEnSupabase(itemsCarrito, total, ventaId) {
     }
 }
 
-async function notificarMake(itemsCarrito, total) {
-    try {
-        const response = await conLimiteDeTiempo(fetch(MAKE_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                fecha: new Date().toISOString(),
-                total: total,
-                productos_vendidos: itemsCarrito.map(item => ({
-                    nombre: item.nombre,
-                    cantidad: item.cantidad,
-                    precio: item.precio,
-                    subtotal: item.precio * item.cantidad
-                }))
-            })
-        }), 8000);
-
-        return response.ok;
-    } catch (error) {
-        console.warn("No se pudo notificar a Make.com (bitácora de Excel):", error);
-        return false;
-    }
-}
-
 btnPagar.addEventListener('click', async () => {
     if (carrito.length === 0) return;
 
@@ -574,10 +606,9 @@ btnPagar.addEventListener('click', async () => {
             const ventaId = (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
             const registradoEnSupabase = await registrarVentaEnSupabase(itemsExitosos, total, ventaId);
-            const notificado = await notificarMake(itemsExitosos, total);
 
-            if (!registradoEnSupabase && !notificado) {
-                mostrarToast("Venta registrada en inventario, pero no se pudo registrar en la bitácora (Sheet/Excel). El stock ya está actualizado.", "info");
+            if (!registradoEnSupabase) {
+                mostrarToast("Venta registrada en inventario, pero no se pudo registrar en la hoja de Control. El stock ya está actualizado.", "info");
             } else {
                 mostrarToast("¡Venta procesada con éxito!", "success");
             }
