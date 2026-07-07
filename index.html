@@ -3,24 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Punto de Venta · Iglesia</title>
+    <title>Ágape · Tienda</title>
+    <link rel="icon" type="image/png" href="https://github.com/reneraudales2-dotcom/Souvenirs/blob/main/Info.png?raw=true">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --ink: #1a2332;
-            --ink-soft: #5b6779;
-            --paper: #f7f5f1;
+            /* Identidad oficial Ágape */
+            --azul: #2a3d68;
+            --azul-deep: #1c2b4a;
+            --gris: #6a757d;
+            --gris-claro: #d7dde0;
+            --aqua: #b8e8e8;
+            --aqua-deep: #2f9c9f;
+            --naranja: #e8792c;
+            --naranja-deep: #c25f18;
+
+            /* Base de la interfaz */
+            --ink: #22293a;
+            --ink-soft: var(--gris);
+            --parchment: #eaf6f7;
             --card: #ffffff;
-            --line: #e6e2da;
-            --brass: #b8860b;
-            --brass-deep: #8c6508;
-            --teal: #1f5c54;
-            --teal-deep: #143f39;
+            --line: #dbe6e7;
+
+            /* Categorías (sellos por producto) */
+            --cat-lectura: var(--azul);
+            --cat-accesorios: var(--naranja);
+            --cat-papeleria: var(--gris);
+            --cat-hogar: var(--aqua-deep);
+            --cat-general: var(--gris);
+
             --danger: #b3422f;
             --danger-bg: #fbeae6;
             --ok: #2f7a5c;
@@ -28,34 +41,41 @@
         * { box-sizing: border-box; }
         body {
             margin: 0;
-            background: var(--paper);
+            background: var(--parchment);
             color: var(--ink);
-            font-family: 'Inter', system-ui, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
         }
-        .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; }
+        .font-display { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; font-weight: 800; }
+        .font-data { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
  
         .topbar {
-            background: var(--teal-deep);
-            color: #f3f0e8;
+            background: var(--azul-deep);
+            color: #eef4f6;
             padding: 18px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 16px;
             flex-wrap: wrap;
-            border-bottom: 3px solid var(--brass);
+            border-bottom: 3px solid var(--naranja);
         }
-        .topbar h1 { font-size: 1.3rem; margin: 0; font-weight: 700; letter-spacing: 0.01em; }
-        .brand { display: flex; align-items: center; gap: 12px; }
+        .topbar h1 { font-size: 1.4rem; margin: 0; font-weight: 600; letter-spacing: 0.01em; }
+        .topbar .subtitulo-marca { font-size: 0.72rem; margin: 1px 0 0; color: rgba(238,244,246,0.6); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+        .brand { display: flex; align-items: center; gap: 13px; }
         .brand-mark {
-            width: 38px; height: 38px;
-            border-radius: 8px;
-            background: var(--brass);
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            background: var(--card);
             display: flex; align-items: center; justify-content: center;
-            font-size: 1.2rem;
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--azul-deep);
             flex-shrink: 0;
+            box-shadow: inset 0 0 0 2px var(--aqua);
+            overflow: hidden;
         }
+        .brand-mark img { width: 100%; height: 100%; object-fit: contain; }
         .topbar-actions { display: flex; align-items: center; gap: 10px; }
         .status-pill {
             display: flex; align-items: center; gap: 8px;
@@ -72,7 +92,7 @@
  
         .btn-admin {
             background: rgba(255,255,255,0.1);
-            color: #f3f0e8;
+            color: #eef4f6;
             border: 1px solid rgba(255,255,255,0.2);
             font-size: 0.82rem;
             font-weight: 600;
@@ -98,54 +118,78 @@
             main { grid-template-columns: 1.6fr 1fr; align-items: start; }
         }
  
-        .panel-head {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 16px; gap: 12px; flex-wrap: wrap;
-        }
-        .panel-head h2 { font-size: 1.1rem; margin: 0; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .panel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+        .panel-head h2 { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; font-size: 1.3rem; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 8px; }
         .pill-soft {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
             font-size: 0.78rem; color: var(--ink-soft);
             background: var(--card); border: 1px solid var(--line);
             padding: 5px 12px; border-radius: 8px; font-weight: 500;
         }
- 
-        .search-box { width: 100%; margin-bottom: 16px; position: relative; }
+
+        .search-box { width: 100%; margin-bottom: 0; position: relative; }
         .search-box input {
             width: 100%; padding: 12px 16px 12px 40px;
             border: 1px solid var(--line); border-radius: 10px;
             font-size: 0.95rem; font-family: inherit;
             background: var(--card); color: var(--ink);
         }
-        .search-box input:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(31,92,84,0.12); }
+        .search-box input:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 3px rgba(42,61,104,0.12); }
         .search-box svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); pointer-events: none; }
- 
-        #grid-productos { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
- 
-        .prod-card {
-            background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-            padding: 18px; display: flex; flex-direction: column; justify-content: space-between;
-            transition: border-color 0.15s, transform 0.1s;
-            position: relative;
+
+        #categoria-chips { display: flex; gap: 8px; margin: 14px 0 18px; flex-wrap: wrap; }
+        .chip-categoria {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+            font-size: 0.8rem; font-weight: 700;
+            padding: 7px 14px; border-radius: 999px;
+            background: var(--card); color: var(--ink-soft);
+            border: 1px solid var(--line);
+            cursor: pointer; display: flex; align-items: center; gap: 6px;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+            white-space: nowrap;
         }
-        .prod-card:hover { border-color: var(--teal); }
-        .prod-card.agotado { opacity: 0.55; }
-        .prod-name { font-weight: 700; font-size: 1.02rem; margin: 0 0 4px; line-height: 1.25; padding-right: 26px; }
+        .chip-categoria .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--chip-color, var(--ink-soft)); flex-shrink: 0; }
+        .chip-categoria:hover { border-color: var(--chip-color, var(--line)); color: var(--ink); }
+        .chip-categoria.activo { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .chip-categoria.activo .punto { background: #fff; }
+
+        #grid-productos { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 18px; }
+
+        .prod-card {
+            background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--cat-color, var(--line));
+            border-radius: 14px;
+            padding: 20px 20px 18px; display: flex; flex-direction: column; justify-content: space-between;
+            transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+            position: relative;
+            min-height: 168px;
+        }
+        .prod-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(43,32,51,0.1); }
+        .prod-card.agotado { opacity: 0.5; }
+        .prod-sello {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; font-size: 0.66rem; font-weight: 700;
+            letter-spacing: 0.05em; text-transform: uppercase;
+            color: var(--cat-color, var(--ink-soft));
+            margin-bottom: 10px;
+        }
+        .prod-sello .punto { width: 7px; height: 7px; border-radius: 50%; background: var(--cat-color, var(--ink-soft)); }
+        .prod-name { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; font-weight: 600; font-size: 1.18rem; margin: 0 0 6px; line-height: 1.25; padding-right: 26px; }
         .prod-stock { font-size: 0.8rem; color: var(--ink-soft); margin: 0; font-weight: 500; }
         .prod-stock.low { color: var(--danger); font-weight: 700; }
-        .prod-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; gap: 8px; }
-        .prod-price { font-family: 'Space Grotesk', sans-serif; font-size: 1.25rem; font-weight: 700; color: var(--teal-deep); }
+        .prod-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; gap: 8px; }
+        .prod-price { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; font-size: 1.4rem; font-weight: 700; color: var(--azul-deep); }
         .btn-add {
-            background: var(--teal); color: white; border: none;
-            font-weight: 700; font-size: 0.85rem; padding: 9px 16px; border-radius: 9px;
+            background: var(--azul); color: white; border: none;
+            font-weight: 700; font-size: 0.85rem; padding: 10px 18px; border-radius: 9px;
             cursor: pointer; transition: background 0.12s, transform 0.06s; white-space: nowrap;
         }
-        .btn-add:hover { background: var(--teal-deep); }
+        .btn-add:hover { background: var(--azul-deep); }
         .btn-add:active { transform: scale(0.96); }
         .btn-add:disabled { background: #cfcabd; cursor: not-allowed; }
- 
+
         .btn-edit-prod {
             position: absolute;
-            top: 14px; right: 14px;
+            top: 16px; right: 16px;
             background: transparent;
             border: none;
             color: var(--ink-soft);
@@ -158,7 +202,7 @@
         }
         .btn-edit-prod:hover { background: var(--line); color: var(--ink); }
         body.modo-admin .btn-edit-prod { display: flex; }
- 
+
         .state-card {
             grid-column: 1 / -1; background: var(--card); border: 1px solid var(--line);
             border-radius: 14px; padding: 40px 24px; text-align: center;
@@ -177,18 +221,19 @@
  
         .spinner {
             width: 30px; height: 30px; border: 3px solid var(--line);
-            border-top-color: var(--teal); border-radius: 50%; margin: 0 auto 12px;
+            border-top-color: var(--azul); border-radius: 50%; margin: 0 auto 12px;
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
  
         .cart-panel {
-            background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+            background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--naranja);
+            border-radius: 16px;
             padding: 22px; position: sticky; top: 20px;
             display: flex; flex-direction: column; max-height: calc(100vh - 40px);
         }
         .cart-panel h2 {
-            font-size: 1.1rem; font-weight: 700; margin: 0 0 16px; padding-bottom: 14px;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; font-size: 1.3rem; font-weight: 600; margin: 0 0 16px; padding-bottom: 14px;
             border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px;
         }
         #carrito-items { flex: 1; overflow-y: auto; min-height: 140px; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
@@ -198,12 +243,12 @@
  
         .cart-item {
             display: flex; justify-content: space-between; align-items: center;
-            background: var(--paper); border: 1px solid var(--line);
+            background: var(--parchment); border: 1px solid var(--line);
             padding: 10px 12px; border-radius: 10px; gap: 8px;
         }
         .cart-item-info { flex: 1; min-width: 0; }
         .cart-item-info h4 { font-size: 0.88rem; font-weight: 700; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .cart-item-info span { font-size: 0.75rem; color: var(--brass-deep); font-weight: 600; }
+        .cart-item-info span { font-size: 0.75rem; color: var(--naranja-deep); font-weight: 600; }
         .qty-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
         .qty-btn {
             width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line);
@@ -216,14 +261,14 @@
         .cart-footer { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
         .cart-total-row { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; margin-bottom: 16px; }
         .cart-total-row span:first-child { font-size: 1rem; color: var(--ink); }
-        .cart-total-row span:last-child { font-family: 'Space Grotesk', sans-serif; font-size: 1.6rem; color: var(--teal-deep); }
+        .cart-total-row span:last-child { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; font-size: 1.6rem; color: var(--azul-deep); }
         .btn-pagar {
-            width: 100%; background: var(--brass); color: #2a1f00;
+            width: 100%; background: var(--naranja); color: #2a1f00;
             font-size: 1.05rem; font-weight: 800; padding: 15px; border: none; border-radius: 12px;
             cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px;
             transition: background 0.12s, transform 0.06s;
         }
-        .btn-pagar:hover:not(:disabled) { background: var(--brass-deep); color: white; }
+        .btn-pagar:hover:not(:disabled) { background: var(--naranja-deep); color: white; }
         .btn-pagar:active:not(:disabled) { transform: scale(0.98); }
         .btn-pagar:disabled { background: #ddd6c4; color: #9b9484; cursor: not-allowed; }
         .btn-clear {
@@ -244,12 +289,12 @@
         @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .toast.success { background: var(--ok); color: white; }
         .toast.error { background: var(--danger); color: white; }
-        .toast.info { background: var(--teal-deep); color: white; }
+        .toast.info { background: var(--azul-deep); color: white; }
  
         /* ---------- Modales ---------- */
         .modal-overlay {
             position: fixed; inset: 0;
-            background: rgba(20,28,25,0.55);
+            background: rgba(28,43,74,0.55);
             display: none;
             align-items: center; justify-content: center;
             z-index: 1000;
@@ -266,9 +311,10 @@
         }
         .modal-box.wide { max-width: 460px; }
         .modal-box h3 {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
             margin: 0 0 6px;
-            font-size: 1.15rem;
-            font-weight: 700;
+            font-size: 1.25rem;
+            font-weight: 600;
             display: flex; align-items: center; gap: 8px;
         }
         .modal-box p.modal-sub { font-size: 0.85rem; color: var(--ink-soft); margin: 0 0 18px; }
@@ -288,7 +334,7 @@
             font-size: 0.95rem;
             font-family: inherit;
         }
-        .field-group input:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(31,92,84,0.12); }
+        .field-group input:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 3px rgba(42,61,104,0.12); }
         .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
         .btn-modal {
             flex: 1;
@@ -299,11 +345,11 @@
             cursor: pointer;
             border: none;
         }
-        .btn-modal.primary { background: var(--teal); color: white; }
-        .btn-modal.primary:hover { background: var(--teal-deep); }
+        .btn-modal.primary { background: var(--azul); color: white; }
+        .btn-modal.primary:hover { background: var(--azul-deep); }
         .btn-modal.danger { background: var(--danger); color: white; }
         .btn-modal.danger:hover { background: #93372a; }
-        .btn-modal.ghost { background: var(--paper); color: var(--ink-soft); }
+        .btn-modal.ghost { background: var(--parchment); color: var(--ink-soft); }
         .btn-modal.ghost:hover { background: var(--line); }
         .modal-error {
             background: var(--danger-bg);
@@ -331,11 +377,11 @@
         .search-row { display: flex; gap: 10px; margin-bottom: 16px; }
         .search-row .search-box { margin-bottom: 0; flex: 1; }
         .btn-scan {
-            background: var(--teal); color: white; border: none;
+            background: var(--azul); color: white; border: none;
             font-weight: 700; font-size: 0.85rem; padding: 0 16px; border-radius: 10px;
             cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;
         }
-        .btn-scan:hover { background: var(--teal-deep); }
+        .btn-scan:hover { background: var(--azul-deep); }
         #lector-camara { width: 100%; border-radius: 12px; overflow: hidden; background: #000; min-height: 180px; }
         .scanner-hint { text-align: center; font-size: 0.8rem; color: var(--ink-soft); margin-top: 10px; }
         .scanner-status { text-align: center; font-size: 0.88rem; font-weight: 700; margin-top: 10px; min-height: 20px; }
@@ -345,13 +391,13 @@
         .codigo-row { display: flex; gap: 8px; align-items: center; }
         .codigo-row .field-group { flex: 1; margin-bottom: 0; }
         .btn-icon-small {
-            background: var(--paper); border: 1px solid var(--line); color: var(--ink);
+            background: var(--parchment); border: 1px solid var(--line); color: var(--ink);
             border-radius: 9px; padding: 11px 12px; cursor: pointer; font-size: 0.9rem; white-space: nowrap;
         }
         .btn-icon-small:hover { background: var(--line); }
         .etiqueta-preview {
             text-align: center; margin-top: 12px; padding: 14px;
-            background: var(--paper); border-radius: 10px; border: 1px dashed var(--line);
+            background: var(--parchment); border-radius: 10px; border: 1px dashed var(--line);
         }
         .prod-barcode { font-size: 0.72rem; color: var(--ink-soft); margin: 2px 0 0; font-family: monospace; }
     </style>
@@ -360,8 +406,11 @@
  
     <nav class="topbar">
         <div class="brand">
-            <div class="brand-mark">⛪</div>
-            <h1 class="font-display">Sistema de Ventas</h1>
+            <div class="brand-mark"><img src="https://github.com/reneraudales2-dotcom/Souvenirs/blob/main/Info.png?raw=true" alt="Ágape"></div>
+            <div>
+                <h1 class="font-display">Ágape</h1>
+                <p class="subtitulo-marca">Tienda del ministerio</p>
+            </div>
         </div>
         <div class="topbar-actions">
             <div class="status-pill" id="status-pill">
@@ -378,7 +427,7 @@
                 <h2>📦 Catálogo de artículos</h2>
                 <div style="display:flex; gap:8px; align-items:center;">
                     <span class="pill-soft" id="contador-productos">—</span>
-                    <button class="btn-admin" id="btn-nuevo-producto" style="display:none; background:var(--teal); border-color:var(--teal); color:white;">+ Nuevo artículo</button>
+                    <button class="btn-admin" id="btn-nuevo-producto" style="display:none; background:var(--azul); border-color:var(--azul); color:white;">+ Nuevo artículo</button>
                 </div>
             </div>
  
@@ -389,6 +438,8 @@
                 </div>
                 <button class="btn-scan" id="btn-escanear-venta" title="Escanear código de barras">📷 Escanear</button>
             </div>
+
+            <div id="categoria-chips"></div>
  
             <div id="grid-productos">
                 <div class="state-card">
@@ -415,7 +466,7 @@
                     <span>Total a pagar</span>
                     <span id="cart-total">L. 0.00</span>
                 </div>
-                <button id="btn-pagar" disabled>
+                <button id="btn-pagar" class="btn-pagar" disabled>
                     💵 Procesar venta
                 </button>
                 <button id="btn-vaciar" class="btn-clear">Vaciar carrito</button>
