@@ -500,6 +500,32 @@ async function descontarStockEnSupabase(itemsCarrito) {
     return resultados;
 }
 
+// Registra cada línea de la venta en Supabase (tabla ventas_log).
+// Esta tabla es la que dispara el Database Webhook que escribe
+// automáticamente en la hoja "Control" del Google Sheet.
+async function registrarVentaEnSupabase(itemsCarrito, total, ventaId) {
+    const filas = itemsCarrito.map(item => ({
+        venta_id: ventaId,
+        producto_id: item.id,
+        nombre: item.nombre,
+        cantidad: item.cantidad,
+        precio: item.precio,
+        subtotal: item.precio * item.cantidad,
+        total_venta: total
+    }));
+
+    try {
+        const { error } = await conLimiteDeTiempo(
+            supabase.from('ventas_log').insert(filas)
+        );
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        console.warn("No se pudo registrar la venta en Supabase (hoja Control no se actualizará para esta venta):", error);
+        return false;
+    }
+}
+
 async function notificarMake(itemsCarrito, total) {
     try {
         const response = await conLimiteDeTiempo(fetch(MAKE_WEBHOOK_URL, {
@@ -545,10 +571,13 @@ btnPagar.addEventListener('click', async () => {
 
         if (exitosos.length > 0) {
             const itemsExitosos = carritoSnapshot.filter(item => exitosos.some(e => e.id === item.id));
+            const ventaId = (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+            const registradoEnSupabase = await registrarVentaEnSupabase(itemsExitosos, total, ventaId);
             const notificado = await notificarMake(itemsExitosos, total);
 
-            if (!notificado) {
-                mostrarToast("Venta registrada en inventario. El registro en Excel falló, pero el stock ya está actualizado.", "info");
+            if (!registradoEnSupabase && !notificado) {
+                mostrarToast("Venta registrada en inventario, pero no se pudo registrar en la bitácora (Sheet/Excel). El stock ya está actualizado.", "info");
             } else {
                 mostrarToast("¡Venta procesada con éxito!", "success");
             }
