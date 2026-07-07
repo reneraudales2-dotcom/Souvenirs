@@ -47,6 +47,18 @@ const inputStock = document.getElementById('input-stock');
 const inputIdOriginal = document.getElementById('input-id-original');
 const btnGuardarProducto = document.getElementById('btn-guardar-producto');
 const btnEliminarProducto = document.getElementById('btn-eliminar-producto');
+const inputCodigoBarras = document.getElementById('input-codigo-barras');
+const btnGenerarCodigo = document.getElementById('btn-generar-codigo');
+const btnEscanearCodigoProducto = document.getElementById('btn-escanear-codigo-producto');
+const etiquetaPreview = document.getElementById('etiqueta-preview');
+const btnImprimirEtiqueta = document.getElementById('btn-imprimir-etiqueta');
+
+// Escáner de venta rápida
+const btnEscanearVenta = document.getElementById('btn-escanear-venta');
+const modalScanner = document.getElementById('modal-scanner');
+const tituloModalScanner = document.getElementById('titulo-modal-scanner');
+const subtituloModalScanner = document.getElementById('subtitulo-modal-scanner');
+const scannerStatus = document.getElementById('scanner-status');
 
 // ==========================================
 // UTILIDADES
@@ -148,7 +160,10 @@ function mostrarEstadoError(error) {
 function renderizarCatalogo() {
     const filtro = terminoBusqueda.trim().toLowerCase();
     const productos = filtro
-        ? baseDeDatosProductos.filter(p => p.nombre.toLowerCase().includes(filtro))
+        ? baseDeDatosProductos.filter(p =>
+            p.nombre.toLowerCase().includes(filtro) ||
+            (p.codigo_barras && p.codigo_barras.toLowerCase().includes(filtro))
+          )
         : baseDeDatosProductos;
 
     contadorProductos.textContent = `${baseDeDatosProductos.length} artículo${baseDeDatosProductos.length === 1 ? '' : 's'}`;
@@ -185,6 +200,7 @@ function renderizarCatalogo() {
             <div>
                 <h3 class="prod-name">${escapeHtml(prod.nombre)}</h3>
                 <p class="prod-stock ${stockBajo ? 'low' : ''}">${agotado ? 'Agotado' : `Disponible: ${prod.stock} uds`}</p>
+                ${prod.codigo_barras ? `<p class="prod-barcode">🏷️ ${escapeHtml(prod.codigo_barras)}</p>` : ''}
             </div>
             <div class="prod-foot">
                 <span class="prod-price">L. ${parseFloat(prod.precio).toFixed(2)}</span>
@@ -337,6 +353,8 @@ function abrirNuevoProducto() {
     inputNombre.value = "";
     inputPrecio.value = "";
     inputStock.value = "";
+    inputCodigoBarras.value = "";
+    actualizarVistaPreviaEtiqueta();
     btnEliminarProducto.style.display = "none";
     inputNombre.disabled = false;
     abrirModal(modalProducto);
@@ -353,6 +371,8 @@ function abrirEdicionProducto(id) {
     inputNombre.value = producto.nombre;
     inputPrecio.value = producto.precio;
     inputStock.value = producto.stock;
+    inputCodigoBarras.value = producto.codigo_barras || "";
+    actualizarVistaPreviaEtiqueta();
     btnEliminarProducto.style.display = "inline-block";
     inputNombre.disabled = false;
     abrirModal(modalProducto);
@@ -362,6 +382,7 @@ btnGuardarProducto.addEventListener('click', async () => {
     const nombre = inputNombre.value.trim();
     const precio = parseFloat(inputPrecio.value);
     const stock = parseInt(inputStock.value, 10);
+    const codigoBarras = inputCodigoBarras.value.trim() || null;
     const idOriginal = inputIdOriginal.value;
 
     if (!nombre) {
@@ -386,13 +407,13 @@ btnGuardarProducto.addEventListener('click', async () => {
     try {
         if (idOriginal) {
             const { error } = await conLimiteDeTiempo(
-                supabase.from('productos').update({ nombre, precio, stock }).eq('id', idOriginal)
+                supabase.from('productos').update({ nombre, precio, stock, codigo_barras: codigoBarras }).eq('id', idOriginal)
             );
             if (error) throw error;
             mostrarToast("Artículo actualizado.", "success");
         } else {
             const { error } = await conLimiteDeTiempo(
-                supabase.from('productos').insert([{ nombre, precio, stock }])
+                supabase.from('productos').insert([{ nombre, precio, stock, codigo_barras: codigoBarras }])
             );
             if (error) throw error;
             mostrarToast("Artículo agregado.", "success");
@@ -403,9 +424,14 @@ btnGuardarProducto.addEventListener('click', async () => {
 
     } catch (error) {
         console.error("Error al guardar producto:", error);
-        errorProducto.textContent = error.message?.includes('duplicate') || error.message?.includes('unique')
-            ? "Ya existe un artículo con ese nombre."
-            : `Error: ${error.message}`;
+        const esDuplicado = error.message?.includes('duplicate') || error.message?.includes('unique');
+        if (esDuplicado && error.message?.includes('codigo_barras')) {
+            errorProducto.textContent = "Ya existe un artículo con ese código de barras.";
+        } else if (esDuplicado) {
+            errorProducto.textContent = "Ya existe un artículo con ese nombre.";
+        } else {
+            errorProducto.textContent = `Error: ${error.message}`;
+        }
         errorProducto.classList.add('visible');
     } finally {
         btnGuardarProducto.disabled = false;
@@ -540,6 +566,176 @@ btnPagar.addEventListener('click', async () => {
         btnPagar.disabled = carrito.length === 0;
         btnPagar.innerHTML = "💵 Procesar venta";
     }
+});
+
+// ==========================================
+// 7. ESCÁNER DE CÓDIGO DE BARRAS (cámara)
+// ==========================================
+// Dos modos:
+//  - 'venta': se usa desde el catálogo. Al leer un código, si coincide con
+//    un producto, se agrega directo al carrito (venta rápida en caja).
+//  - 'producto': se usa desde el modal de inventario, solo llena el campo
+//    de código de barras con lo que lea la cámara.
+let lectorHtml5Qrcode = null;
+let modoEscaneo = null;
+let escaneoBloqueado = false;
+
+async function iniciarEscaneo(modo) {
+    modoEscaneo = modo;
+    escaneoBloqueado = false;
+    scannerStatus.textContent = "";
+    scannerStatus.className = "scanner-status";
+
+    if (modo === 'venta') {
+        tituloModalScanner.textContent = "📷 Escanear para vender";
+        subtituloModalScanner.textContent = "Apunta la cámara al código del producto para agregarlo al carrito.";
+    } else {
+        tituloModalScanner.textContent = "📷 Escanear código";
+        subtituloModalScanner.textContent = "Apunta la cámara al código impreso para usarlo en este artículo.";
+    }
+
+    abrirModal(modalScanner);
+
+    if (typeof Html5Qrcode === 'undefined') {
+        scannerStatus.textContent = "No se pudo cargar el lector de cámara. Verifica tu conexión a internet.";
+        scannerStatus.className = "scanner-status notfound";
+        return;
+    }
+
+    lectorHtml5Qrcode = new Html5Qrcode("lector-camara");
+    try {
+        await lectorHtml5Qrcode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 150 } },
+            (textoDecodificado) => manejarCodigoDetectado(textoDecodificado),
+            () => { /* se ignoran los frames sin código detectado */ }
+        );
+    } catch (err) {
+        console.error("Error al iniciar la cámara:", err);
+        scannerStatus.textContent = "No se pudo acceder a la cámara. Revisa los permisos del navegador.";
+        scannerStatus.className = "scanner-status notfound";
+    }
+}
+
+async function detenerEscaneo() {
+    if (!lectorHtml5Qrcode) return;
+    try {
+        const estado = lectorHtml5Qrcode.getState();
+        if (estado === Html5QrcodeScannerState.SCANNING || estado === Html5QrcodeScannerState.PAUSED) {
+            await lectorHtml5Qrcode.stop();
+        }
+        lectorHtml5Qrcode.clear();
+    } catch (err) {
+        console.warn("Error al detener la cámara:", err);
+    }
+    lectorHtml5Qrcode = null;
+}
+
+function manejarCodigoDetectado(codigo) {
+    if (escaneoBloqueado) return;
+
+    if (modoEscaneo === 'producto') {
+        escaneoBloqueado = true;
+        inputCodigoBarras.value = codigo;
+        actualizarVistaPreviaEtiqueta();
+        cerrarModal(modalScanner);
+        detenerEscaneo();
+        mostrarToast("Código capturado.", "success");
+        return;
+    }
+
+    // Modo venta: buscar el producto por su código y agregarlo al carrito
+    const producto = baseDeDatosProductos.find(p => p.codigo_barras === codigo);
+
+    if (!producto) {
+        scannerStatus.textContent = `Código "${codigo}" no reconocido.`;
+        scannerStatus.className = "scanner-status notfound";
+        return;
+    }
+
+    escaneoBloqueado = true;
+    agregarAlCarrito(producto.id);
+    scannerStatus.textContent = `✅ ${producto.nombre} agregado al carrito.`;
+    scannerStatus.className = "scanner-status found";
+
+    // Pequeña pausa para no leer el mismo código varias veces seguidas
+    setTimeout(() => {
+        escaneoBloqueado = false;
+        scannerStatus.textContent = "";
+        scannerStatus.className = "scanner-status";
+    }, 1200);
+}
+
+btnEscanearVenta.addEventListener('click', () => iniciarEscaneo('venta'));
+btnEscanearCodigoProducto.addEventListener('click', () => iniciarEscaneo('producto'));
+document.getElementById('btn-cerrar-scanner')?.addEventListener('click', detenerEscaneo);
+modalScanner.addEventListener('click', (e) => { if (e.target === modalScanner) detenerEscaneo(); });
+
+// ==========================================
+// 8. GENERAR CÓDIGO PROPIO Y ETIQUETA IMPRIMIBLE
+// ==========================================
+function generarCodigoUnico() {
+    let codigo;
+    do {
+        const marcaTiempo = Date.now().toString(36).toUpperCase();
+        const sufijo = Math.floor(10 + Math.random() * 90);
+        codigo = `AG-${marcaTiempo}${sufijo}`;
+    } while (baseDeDatosProductos.some(p => p.codigo_barras === codigo));
+    return codigo;
+}
+
+function actualizarVistaPreviaEtiqueta() {
+    const codigo = inputCodigoBarras.value.trim();
+    if (!codigo || typeof JsBarcode === 'undefined') {
+        etiquetaPreview.style.display = "none";
+        return;
+    }
+    try {
+        JsBarcode("#svg-etiqueta", codigo, {
+            format: "CODE128", width: 2, height: 50, fontSize: 14, margin: 6
+        });
+        etiquetaPreview.style.display = "block";
+    } catch (err) {
+        etiquetaPreview.style.display = "none";
+    }
+}
+
+btnGenerarCodigo.addEventListener('click', () => {
+    inputCodigoBarras.value = generarCodigoUnico();
+    actualizarVistaPreviaEtiqueta();
+});
+
+inputCodigoBarras.addEventListener('input', actualizarVistaPreviaEtiqueta);
+
+btnImprimirEtiqueta.addEventListener('click', () => {
+    const codigo = inputCodigoBarras.value.trim();
+    if (!codigo) return;
+
+    const nombre = inputNombre.value.trim() || "Artículo";
+    const precio = parseFloat(inputPrecio.value) || 0;
+
+    const ventana = window.open('', '_blank', 'width=420,height=320');
+    if (!ventana) {
+        mostrarToast("El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes.", "error");
+        return;
+    }
+
+    ventana.document.write(`
+        <html>
+        <head><title>Etiqueta - ${escapeHtml(nombre)}</title></head>
+        <body style="font-family: sans-serif; text-align:center; margin:0; padding:18px;">
+            <div style="font-weight:700; font-size:14px; margin-bottom:4px;">${escapeHtml(nombre)}</div>
+            <div style="font-weight:700; font-size:13px; margin-bottom:10px;">L. ${precio.toFixed(2)}</div>
+            <svg id="barcode"></svg>
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+            <script>
+                JsBarcode("#barcode", ${JSON.stringify(codigo)}, { format: "CODE128", width: 2, height: 50, fontSize: 14, margin: 6 });
+                window.onload = () => setTimeout(() => window.print(), 300);
+            <\/script>
+        </body>
+        </html>
+    `);
+    ventana.document.close();
 });
 
 // Inicialización automática al cargar el archivo
