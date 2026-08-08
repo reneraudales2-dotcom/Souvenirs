@@ -522,31 +522,27 @@ btnEliminarProducto.addEventListener('click', async () => {
 // Excel de OneDrive con el detalle de la venta — el Excel ya no controla
 // el stock, solo queda como registro/reporte de lo vendido.
 
+// El descuento de stock se hace con una función RPC atómica (descontar_stock)
+// creada en Supabase, en vez de leer y escribir en dos pasos separados.
+// Esto evita que dos ventas simultáneas (ej. la caja principal y el tablet)
+// puedan vender más unidades de las que realmente hay disponibles.
 async function descontarStockEnSupabase(itemsCarrito) {
     const resultados = [];
 
     for (const item of itemsCarrito) {
-        const { data: actual, error: errorLectura } = await conLimiteDeTiempo(
-            supabase.from('productos').select('stock').eq('id', item.id).single()
+        const { data, error } = await conLimiteDeTiempo(
+            supabase.rpc('descontar_stock', { p_producto_id: item.id, p_cantidad: item.cantidad })
         );
 
-        if (errorLectura || !actual) {
-            resultados.push({ id: item.id, nombre: item.nombre, ok: false, motivo: "No se pudo verificar el stock actual." });
-            continue;
-        }
-
-        if (actual.stock < item.cantidad) {
-            resultados.push({ id: item.id, nombre: item.nombre, ok: false, motivo: `Solo quedan ${actual.stock} uds disponibles.` });
-            continue;
-        }
-
-        const nuevoStock = actual.stock - item.cantidad;
-        const { error: errorUpdate } = await conLimiteDeTiempo(
-            supabase.from('productos').update({ stock: nuevoStock }).eq('id', item.id)
-        );
-
-        if (errorUpdate) {
+        if (error) {
             resultados.push({ id: item.id, nombre: item.nombre, ok: false, motivo: "No se pudo actualizar el inventario." });
+            continue;
+        }
+
+        const fila = Array.isArray(data) ? data[0] : data;
+
+        if (!fila || !fila.exito) {
+            resultados.push({ id: item.id, nombre: item.nombre, ok: false, motivo: fila?.motivo || "No se pudo verificar el stock actual." });
             continue;
         }
 
