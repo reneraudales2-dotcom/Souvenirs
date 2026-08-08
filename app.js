@@ -51,6 +51,12 @@ const statusText = document.getElementById('status-text');
 const toastContainer = document.getElementById('toast-container');
 const btnAdminToggle = document.getElementById('btn-admin-toggle');
 const btnNuevoProducto = document.getElementById('btn-nuevo-producto');
+const btnReportes = document.getElementById('btn-reportes');
+const modalReportes = document.getElementById('modal-reportes');
+const listaMasVendidos = document.getElementById('lista-mas-vendidos');
+const listaStockBajo = document.getElementById('lista-stock-bajo');
+const btnExportarInventario = document.getElementById('btn-exportar-inventario');
+const UMBRAL_STOCK_BAJO = 3;
 
 // Modales
 const modalPassword = document.getElementById('modal-password');
@@ -376,6 +382,7 @@ btnAdminToggle.addEventListener('click', () => {
         document.body.classList.remove('modo-admin');
         btnAdminToggle.textContent = "🔒 Modo inventario";
         btnNuevoProducto.style.display = "none";
+        btnReportes.style.display = "none";
         return;
     }
     errorPassword.classList.remove('visible');
@@ -390,6 +397,7 @@ function intentarEntrarModoAdmin() {
         document.body.classList.add('modo-admin');
         btnAdminToggle.textContent = "🔓 Salir de inventario";
         btnNuevoProducto.style.display = "inline-flex";
+        btnReportes.style.display = "inline-flex";
         cerrarModal(modalPassword);
         mostrarToast("Modo inventario activado.", "success");
     } else {
@@ -824,6 +832,126 @@ function suscribirCambiosEnTiempoReal() {
             }
         });
 }
+
+// ==========================================
+// 10. REPORTES (exportar, más vendidos, stock bajo)
+// ==========================================
+// Nota: si "más vendidos" no carga, verifica que tu tabla "ventas_log"
+// tenga una columna de fecha llamada "creado_en" (igual que en "productos").
+// Si se llama distinto (ej. "created_at"), cambia CAMPO_FECHA_VENTA abajo.
+const CAMPO_FECHA_VENTA = 'creado_en';
+const RANGOS_REPORTE = { semana: 7, mes: 30, 'año': 365 };
+let periodoReporteActivo = 'semana';
+
+btnReportes.addEventListener('click', () => {
+    abrirModal(modalReportes);
+    cargarStockBajo();
+    seleccionarPeriodoReporte(periodoReporteActivo);
+});
+
+document.querySelectorAll('.tab-periodo').forEach(btn => {
+    btn.addEventListener('click', () => seleccionarPeriodoReporte(btn.dataset.periodo));
+});
+
+function seleccionarPeriodoReporte(periodo) {
+    periodoReporteActivo = periodo;
+    document.querySelectorAll('.tab-periodo').forEach(btn => {
+        btn.classList.toggle('activo', btn.dataset.periodo === periodo);
+    });
+    cargarMasVendidos(periodo);
+}
+
+async function cargarMasVendidos(periodo) {
+    listaMasVendidos.innerHTML = `<p class="reporte-vacio">Cargando...</p>`;
+
+    const dias = RANGOS_REPORTE[periodo] || 7;
+    const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+        const { data, error } = await conLimiteDeTiempo(
+            supabase.from('ventas_log').select(`producto_id, nombre, cantidad, ${CAMPO_FECHA_VENTA}`).gte(CAMPO_FECHA_VENTA, desde)
+        );
+        if (error) throw error;
+
+        const agrupado = new Map();
+        (data || []).forEach(fila => {
+            const clave = fila.producto_id ?? fila.nombre;
+            const acumulado = agrupado.get(clave) || { nombre: fila.nombre, cantidad: 0 };
+            acumulado.cantidad += fila.cantidad;
+            agrupado.set(clave, acumulado);
+        });
+
+        const ranking = [...agrupado.values()].sort((a, b) => b.cantidad - a.cantidad).slice(0, 8);
+
+        if (ranking.length === 0) {
+            listaMasVendidos.innerHTML = `<p class="reporte-vacio">Sin ventas registradas en este período.</p>`;
+            return;
+        }
+
+        listaMasVendidos.innerHTML = ranking.map((item, i) => `
+            <div class="fila-reporte">
+                <span class="rank">#${i + 1}</span>
+                <span class="nombre-reporte">${escapeHtml(item.nombre)}</span>
+                <span class="valor-reporte">${item.cantidad} uds</span>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error("Error al cargar más vendidos:", error);
+        listaMasVendidos.innerHTML = `<p class="reporte-vacio">No se pudo cargar. Verifica que "ventas_log" tenga la columna "${CAMPO_FECHA_VENTA}".</p>`;
+    }
+}
+
+function cargarStockBajo() {
+    const bajos = baseDeDatosProductos
+        .filter(p => p.stock <= UMBRAL_STOCK_BAJO)
+        .sort((a, b) => a.stock - b.stock);
+
+    if (bajos.length === 0) {
+        listaStockBajo.innerHTML = `<p class="reporte-vacio">Todo tu inventario está en buen nivel. 🎉</p>`;
+        return;
+    }
+
+    listaStockBajo.innerHTML = bajos.map(p => `
+        <div class="fila-reporte">
+            <span class="nombre-reporte">${escapeHtml(p.nombre)}</span>
+            <span class="valor-reporte ${p.stock === 0 ? 'agotado' : 'bajo'}">${p.stock === 0 ? 'Agotado' : `${p.stock} uds`}</span>
+        </div>
+    `).join('');
+}
+
+function exportarInventarioCSV() {
+    if (baseDeDatosProductos.length === 0) {
+        mostrarToast("No hay productos para exportar.", "error");
+        return;
+    }
+
+    const encabezados = ["Nombre", "Precio", "Stock", "Codigo de barras"];
+    const filas = baseDeDatosProductos.map(p => [p.nombre, p.precio, p.stock, p.codigo_barras || ""]);
+
+    const escaparCelda = (valor) => {
+        const texto = String(valor ?? "");
+        return (texto.includes(",") || texto.includes('"') || texto.includes("\n"))
+            ? `"${texto.replace(/"/g, '""')}"`
+            : texto;
+    };
+
+    const csv = [encabezados, ...filas].map(fila => fila.map(escaparCelda).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const fecha = new Date().toISOString().slice(0, 10);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventario-${fecha}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    mostrarToast("Inventario exportado.", "success");
+}
+
+btnExportarInventario.addEventListener('click', exportarInventarioCSV);
 
 // Inicialización automática al cargar el archivo
 cargarProductos();
