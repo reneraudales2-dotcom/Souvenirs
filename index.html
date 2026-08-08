@@ -401,6 +401,40 @@
             background: var(--parchment); border-radius: 10px; border: 1px dashed var(--line);
         }
         .prod-barcode { font-size: 0.72rem; color: var(--ink-soft); margin: 2px 0 0; font-family: monospace; }
+
+        /* ---------- Reportes (más vendidos, stock bajo, exportar) ---------- */
+        .modal-box.reportes { max-width: 520px; max-height: 85vh; overflow-y: auto; }
+        .reporte-seccion { margin-bottom: 22px; }
+        .reporte-seccion:last-child { margin-bottom: 0; }
+        .reporte-titulo {
+            font-size: 0.95rem; font-weight: 700; margin: 0 0 10px;
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        }
+        .tabs-periodo { display: flex; gap: 6px; }
+        .tab-periodo {
+            background: var(--parchment); border: 1px solid var(--line); color: var(--ink-soft);
+            border-radius: 8px; padding: 6px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+        }
+        .tab-periodo.activo { background: var(--azul); border-color: var(--azul); color: white; }
+        .lista-reporte { display: flex; flex-direction: column; gap: 6px; }
+        .fila-reporte {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--parchment); border-radius: 8px; padding: 8px 12px;
+            font-size: 0.85rem;
+        }
+        .fila-reporte .rank { font-weight: 800; color: var(--naranja); width: 22px; flex-shrink: 0; }
+        .fila-reporte .nombre-reporte { flex: 1; font-weight: 600; }
+        .fila-reporte .valor-reporte { font-weight: 700; color: var(--azul); white-space: nowrap; }
+        .fila-reporte .valor-reporte.bajo { color: var(--naranja-deep); }
+        .fila-reporte .valor-reporte.agotado { color: var(--danger); }
+        .reporte-vacio { font-size: 0.85rem; color: var(--ink-soft); padding: 10px 2px; margin: 0; }
+        .btn-exportar {
+            width: 100%; background: var(--ok); color: white; border: none;
+            border-radius: 10px; padding: 12px; font-weight: 700; font-size: 0.9rem;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-exportar:hover { opacity: 0.9; }
+        .separador-reporte { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
     </style>
 </head>
 <body>
@@ -429,6 +463,7 @@
                 <div style="display:flex; gap:8px; align-items:center;">
                     <span class="pill-soft" id="contador-productos">—</span>
                     <button class="btn-admin" id="btn-nuevo-producto" style="display:none; background:var(--azul); border-color:var(--azul); color:white;">+ Nuevo artículo</button>
+                    <button class="btn-admin" id="btn-reportes" style="display:none; background:var(--naranja); border-color:var(--naranja); color:white;">📊 Reportes</button>
                 </div>
             </div>
  
@@ -547,6 +582,44 @@
             <div id="lector-camara"></div>
             <p class="scanner-status" id="scanner-status"></p>
             <p class="scanner-hint">Si no ves la imagen de la cámara, revisa los permisos del navegador.</p>
+        </div>
+    </div>
+
+    <!-- Modal: reportes (exportar inventario, más vendidos, stock bajo) -->
+    <div class="modal-overlay" id="modal-reportes">
+        <div class="modal-box reportes">
+            <button class="modal-close-x" data-cerrar="modal-reportes">✕</button>
+            <h3>📊 Reportes e inventario</h3>
+            <p class="modal-sub">Exporta tu inventario o revisa qué se está vendiendo y qué necesita reposición.</p>
+
+            <div class="reporte-seccion">
+                <button class="btn-exportar" id="btn-exportar-inventario">⬇️ Exportar inventario completo (CSV)</button>
+            </div>
+
+            <hr class="separador-reporte">
+
+            <div class="reporte-seccion">
+                <div class="reporte-titulo">
+                    <span>🔥 Más vendidos</span>
+                    <div class="tabs-periodo">
+                        <button class="tab-periodo" data-periodo="semana">Semana</button>
+                        <button class="tab-periodo" data-periodo="mes">Mes</button>
+                        <button class="tab-periodo" data-periodo="año">Año</button>
+                    </div>
+                </div>
+                <div class="lista-reporte" id="lista-mas-vendidos">
+                    <p class="reporte-vacio">Cargando...</p>
+                </div>
+            </div>
+
+            <hr class="separador-reporte">
+
+            <div class="reporte-seccion">
+                <div class="reporte-titulo"><span>⚠️ Stock bajo — repón pronto</span></div>
+                <div class="lista-reporte" id="lista-stock-bajo">
+                    <p class="reporte-vacio">Cargando...</p>
+                </div>
+            </div>
         </div>
     </div>
 
