@@ -2,7 +2,7 @@ name: Mantener Supabase Activo
 
 on:
   schedule:
-    # Se ejecuta cada 4 dias a las 00:00 UTC
+    # Se ejecuta cada 4 días a las 00:00 UTC
     - cron: '0 0 */4 * *'
   workflow_dispatch: 
 
@@ -12,6 +12,6 @@ jobs:
     steps:
       - name: Hacer ping a la API de Supabase
         run: |
-          curl -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+          curl -X GET "https://hhrpjyofxmyzrdahqutm.supabase.co/rest/v1/productos?select=id&limit=1" \
           -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
           -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
