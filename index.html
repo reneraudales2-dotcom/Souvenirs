@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Souvenirs - Info</title>
-    <link rel="icon" type="image/png" href="Info.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#1c2b4a">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
@@ -435,6 +438,67 @@
         }
         .btn-exportar:hover { opacity: 0.9; }
         .separador-reporte { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
+        .resumen-reporte { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+        .resumen-item { background: var(--azul); color: #fff; border-radius: 10px; padding: 10px 6px; text-align: center; }
+        .resumen-item .n { font-size: 1.05rem; font-weight: 800; }
+        .resumen-item .l { font-size: 0.66rem; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+        /* ---------- Select de categoría ---------- */
+        .field-group select {
+            width: 100%; padding: 11px 14px;
+            border: 1px solid var(--line); border-radius: 9px;
+            font-size: 0.95rem; font-family: inherit;
+            background: #fff; color: var(--ink);
+        }
+        .field-group select:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 3px rgba(42,61,104,0.12); }
+
+        /* ---------- Aviso sin conexión ---------- */
+        .banner-offline {
+            display: none;
+            background: #fff4e5; border: 1px solid #f1c68b; color: #7a4a0c;
+            border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
+            font-size: 0.85rem; font-weight: 600;
+        }
+        .banner-offline.visible { display: block; }
+
+        /* ---------- Cobro (monto recibido y cambio) ---------- */
+        .cobro-total { text-align: center; margin: 4px 0 16px; }
+        .cobro-total .etiqueta { font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; }
+        .cobro-total .monto { font-size: 2.2rem; font-weight: 800; color: var(--azul-deep); }
+        .cobro-rapidos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+        .btn-rapido {
+            background: var(--parchment); border: 1px solid var(--line); color: var(--ink);
+            border-radius: 8px; padding: 6px 12px; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+        }
+        .btn-rapido:hover { background: var(--line); }
+        .cobro-cambio {
+            display: flex; justify-content: space-between; align-items: baseline;
+            background: var(--parchment); border-radius: 10px; padding: 12px 14px; margin-top: 14px; font-weight: 700;
+        }
+        .cobro-cambio .valor { font-size: 1.5rem; color: var(--ok); }
+        .cobro-cambio.falta .valor { color: var(--danger); }
+        .cobro-resultado { text-align: center; }
+        .cobro-resultado .icono { font-size: 2.4rem; display: block; margin-bottom: 6px; }
+        .cobro-resultado h3 { justify-content: center; }
+        .cobro-resultado .filas { margin: 14px 0; display: flex; flex-direction: column; gap: 6px; }
+        .cobro-resultado .fila { display: flex; justify-content: space-between; background: var(--parchment); border-radius: 8px; padding: 9px 12px; font-weight: 600; }
+        .cobro-resultado .fila.destacada { background: var(--azul); color: #fff; font-size: 1.1rem; font-weight: 800; }
+        .cobro-resultado .aviso { font-size: 0.82rem; color: var(--naranja-deep); font-weight: 600; margin: 0 0 10px; }
+
+        /* ---------- Ventas recientes / anular ---------- */
+        .modal-box.ventas { max-width: 520px; max-height: 85vh; overflow-y: auto; }
+        .venta-card { background: var(--parchment); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 0.85rem; }
+        .venta-card.anulada { opacity: 0.55; }
+        .venta-card .cab { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+        .venta-card .det { color: var(--ink-soft); margin: 4px 0 8px; }
+        .venta-card .pie { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .venta-card .etiqueta-anulada { font-size: 0.75rem; font-weight: 700; color: var(--danger); }
+        .btn-anular {
+            background: var(--danger-bg); color: var(--danger); border: none; border-radius: 8px;
+            padding: 6px 12px; font-weight: 700; font-size: 0.78rem; cursor: pointer;
+        }
+        .btn-anular:hover { background: #f5d4cc; }
+        .btn-anular:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -458,12 +522,14 @@
  
     <main>
         <section>
+            <div class="banner-offline" id="banner-offline">📡 Sin conexión: se muestra el último inventario guardado. No se pueden procesar ventas hasta que vuelva el internet.</div>
             <div class="panel-head">
                 <h2>📦 Catálogo de artículos</h2>
                 <div style="display:flex; gap:8px; align-items:center;">
                     <span class="pill-soft" id="contador-productos">—</span>
                     <button class="btn-admin" id="btn-nuevo-producto" style="display:none; background:var(--azul); border-color:var(--azul); color:white;">+ Nuevo artículo</button>
                     <button class="btn-admin" id="btn-reportes" style="display:none; background:var(--naranja); border-color:var(--naranja); color:white;">📊 Reportes</button>
+                    <button class="btn-admin" id="btn-ventas" style="display:none; background:var(--azul-deep); border-color:var(--azul-deep); color:white;">🧾 Ventas</button>
                 </div>
             </div>
  
@@ -517,11 +583,15 @@
         <div class="modal-box">
             <button class="modal-close-x" data-cerrar="modal-password">✕</button>
             <h3>🔒 Modo inventario</h3>
-            <p class="modal-sub">Ingresa la contraseña para agregar o ajustar artículos.</p>
-            <div class="modal-error" id="error-password">Contraseña incorrecta.</div>
+            <p class="modal-sub">Inicia sesión con la cuenta de administrador para agregar o ajustar artículos.</p>
+            <div class="modal-error" id="error-password">Correo o contraseña incorrectos.</div>
+            <div class="field-group">
+                <label for="input-email">Correo</label>
+                <input type="email" id="input-email" placeholder="correo@ejemplo.com" autocomplete="username">
+            </div>
             <div class="field-group">
                 <label for="input-password">Contraseña</label>
-                <input type="password" id="input-password" placeholder="••••••••" autocomplete="off">
+                <input type="password" id="input-password" placeholder="••••••••" autocomplete="current-password">
             </div>
             <div class="modal-actions">
                 <button class="btn-modal ghost" data-cerrar="modal-password">Cancelar</button>
@@ -548,6 +618,10 @@
             <div class="field-group">
                 <label for="input-stock">Cantidad disponible</label>
                 <input type="number" id="input-stock" placeholder="0" step="1" min="0">
+            </div>
+            <div class="field-group">
+                <label for="input-categoria">Categoría</label>
+                <select id="input-categoria"></select>
             </div>
             <div class="field-group">
                 <label for="input-codigo-barras">Código de barras (opcional)</label>
@@ -585,6 +659,60 @@
         </div>
     </div>
 
+    <!-- Modal: cobro (monto recibido y cambio) -->
+    <div class="modal-overlay" id="modal-cobro">
+        <div class="modal-box">
+            <button class="modal-close-x" data-cerrar="modal-cobro">✕</button>
+
+            <div id="cobro-formulario">
+                <h3>💵 Cobrar venta</h3>
+                <p class="modal-sub">Escribe cuánto te entregan para calcular el cambio (es opcional).</p>
+                <div class="modal-error" id="error-cobro"></div>
+                <div class="cobro-total">
+                    <div class="etiqueta">Total a pagar</div>
+                    <div class="monto" id="cobro-total">L. 0.00</div>
+                </div>
+                <div class="field-group">
+                    <label for="input-recibido">Monto recibido (L.)</label>
+                    <input type="number" id="input-recibido" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
+                    <div class="cobro-rapidos" id="cobro-rapidos"></div>
+                </div>
+                <div class="cobro-cambio" id="cobro-cambio">
+                    <span id="cobro-cambio-etiqueta">Cambio</span>
+                    <span class="valor" id="cobro-cambio-valor">L. 0.00</span>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-modal ghost" data-cerrar="modal-cobro">Cancelar</button>
+                    <button class="btn-modal primary" id="btn-confirmar-cobro">Confirmar venta</button>
+                </div>
+            </div>
+
+            <div id="cobro-resultado" class="cobro-resultado" style="display:none;">
+                <span class="icono">✅</span>
+                <h3>Venta registrada</h3>
+                <div class="filas">
+                    <div class="fila"><span>Total</span><span id="res-total">L. 0.00</span></div>
+                    <div class="fila"><span>Recibido</span><span id="res-recibido">—</span></div>
+                    <div class="fila destacada"><span>Cambio</span><span id="res-cambio">—</span></div>
+                </div>
+                <p class="aviso" id="res-aviso" style="display:none;"></p>
+                <div class="modal-actions">
+                    <button class="btn-modal primary" data-cerrar="modal-cobro">Nueva venta</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: ventas recientes (anular) -->
+    <div class="modal-overlay" id="modal-ventas">
+        <div class="modal-box ventas">
+            <button class="modal-close-x" data-cerrar="modal-ventas">✕</button>
+            <h3>🧾 Ventas recientes</h3>
+            <p class="modal-sub">Si te equivocas en una venta, anúlala y las unidades vuelven al inventario.</p>
+            <div id="lista-ventas"><p class="reporte-vacio">Cargando...</p></div>
+        </div>
+    </div>
+
     <!-- Modal: reportes (exportar inventario, más vendidos, stock bajo) -->
     <div class="modal-overlay" id="modal-reportes">
         <div class="modal-box reportes">
@@ -607,6 +735,7 @@
                         <button class="tab-periodo" data-periodo="año">Año</button>
                     </div>
                 </div>
+                <div class="resumen-reporte" id="resumen-reporte"></div>
                 <div class="lista-reporte" id="lista-mas-vendidos">
                     <p class="reporte-vacio">Cargando...</p>
                 </div>
