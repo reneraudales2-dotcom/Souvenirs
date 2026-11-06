@@ -132,6 +132,17 @@ const resAviso = document.getElementById('res-aviso');
 const modalVentas = document.getElementById('modal-ventas');
 const listaVentas = document.getElementById('lista-ventas');
 
+// Etiquetas
+const btnEtiquetas = document.getElementById('btn-etiquetas');
+const modalEtiquetas = document.getElementById('modal-etiquetas');
+const etqAviso = document.getElementById('etq-aviso');
+const etqBuscador = document.getElementById('etq-buscador');
+const etqLista = document.getElementById('etq-lista');
+const etqInfoTotal = document.getElementById('etq-info-total');
+const etqResumen = document.getElementById('etq-resumen');
+const etqHojas = document.getElementById('etq-hojas');
+const btnImprimirEtiquetas = document.getElementById('btn-imprimir-etiquetas');
+
 // ==========================================
 // UTILIDADES
 // ==========================================
@@ -244,6 +255,7 @@ async function cargarProductos({ silencioso = false } = {}) {
         renderizarChipsCategoria();
         renderizarCatalogo();
         sincronizarCarrito();
+        refrescarEtiquetasSiAbierto();
 
     } catch (error) {
         console.error("Error al cargar productos de Supabase:", error);
@@ -563,6 +575,8 @@ function aplicarModoAdmin(activo) {
     btnNuevoProducto.style.display = visibilidad;
     btnReportes.style.display = visibilidad;
     btnVentas.style.display = visibilidad;
+    btnEtiquetas.style.display = visibilidad;
+    if (!activo) cerrarModal(modalEtiquetas);
 }
 
 sb.auth.onAuthStateChange((_evento, sesion) => {
@@ -1345,6 +1359,201 @@ function exportarInventarioCSV() {
 }
 
 btnExportarInventario.addEventListener('click', exportarInventarioCSV);
+
+// ==========================================
+// 10b. ETIQUETAS DE CÓDIGOS DE BARRAS (hojas A4, 3 × 6 = 18 por hoja)
+// ==========================================
+// Usa el inventario que la app ya tiene cargado (y se actualiza solo con el tiempo real).
+// Solo aparecen artículos con código de barras; los demás se listan en un aviso.
+const COLUMNAS_ETIQUETA = 3;
+const FILAS_ETIQUETA = 6;
+const ETIQUETAS_POR_HOJA = COLUMNAS_ETIQUETA * FILAS_ETIQUETA;
+
+let copiasEtiquetas = new Map();   // String(id) -> cantidad de copias a imprimir
+let firmaCatalogoEtiquetas = "";
+
+function productosConCodigo() {
+    return baseDeDatosProductos.filter(p => p.codigo_barras);
+}
+
+function copiasDe(prod) {
+    const clave = String(prod.id);
+    if (!copiasEtiquetas.has(clave)) copiasEtiquetas.set(clave, 1);   // por defecto, 1 copia de cada uno
+    return copiasEtiquetas.get(clave);
+}
+
+// Cambia solo si cambió algo que se ve en las etiquetas, para no re-dibujar por cada venta.
+function calcularFirmaCatalogoEtiquetas() {
+    return baseDeDatosProductos
+        .map(p => `${p.id}|${p.nombre}|${p.precio}|${p.codigo_barras || ''}`)
+        .join('\n');
+}
+
+function renderizarAvisoEtiquetas() {
+    const sinCodigo = baseDeDatosProductos.filter(p => !p.codigo_barras);
+    if (sinCodigo.length === 0) {
+        etqAviso.style.display = "none";
+        return;
+    }
+    etqAviso.style.display = "block";
+    etqAviso.innerHTML = `⚠️ ${sinCodigo.length} producto(s) sin código de barras (no aparecen aquí): ` +
+        sinCodigo.map(p => escapeHtml(p.nombre)).join(", ") +
+        `. Edítalos (✏️) y usa "🎲 Generar" para darles un código.`;
+}
+
+function renderizarListaEtiquetas() {
+    const filtro = normalizar(etqBuscador.value.trim());
+    let lista = productosConCodigo();
+    if (filtro) {
+        lista = lista.filter(p => normalizar(p.nombre).includes(filtro) || normalizar(p.codigo_barras).includes(filtro));
+    }
+
+    if (lista.length === 0) {
+        etqLista.innerHTML = `<p class="reporte-vacio" style="padding:14px;">${productosConCodigo().length === 0 ? 'Ningún artículo tiene código de barras todavía.' : 'Sin resultados.'}</p>`;
+        return;
+    }
+
+    etqLista.innerHTML = lista.map(p => `
+        <div class="etq-fila">
+            <div class="info-prod">
+                <div class="nombre-p">${escapeHtml(p.nombre)}</div>
+                <div class="codigo-p">${escapeHtml(p.codigo_barras)}</div>
+            </div>
+            <div class="etq-stepper">
+                <button type="button" data-etq-id="${escapeHtml(p.id)}" data-etq-delta="-1" aria-label="Quitar una etiqueta">−</button>
+                <input type="number" min="0" value="${copiasDe(p)}" data-etq-input="${escapeHtml(p.id)}" aria-label="Copias de ${escapeHtml(p.nombre)}">
+                <button type="button" data-etq-id="${escapeHtml(p.id)}" data-etq-delta="1" aria-label="Agregar una etiqueta">+</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function actualizarHojasEtiquetas() {
+    const items = [];
+    productosConCodigo().forEach(p => {
+        for (let i = 0; i < copiasDe(p); i++) items.push(p);
+    });
+
+    const total = items.length;
+    const distintos = productosConCodigo().filter(p => copiasDe(p) > 0).length;
+    etqInfoTotal.textContent = `${total} etiqueta${total === 1 ? '' : 's'} en total`;
+
+    if (total === 0) {
+        etqResumen.style.display = "none";
+        etqHojas.innerHTML = `<p class="reporte-vacio" style="text-align:center; margin-top:20px;">Ajusta las cantidades con + y − para armar tu hoja de impresión.</p>`;
+        return;
+    }
+
+    const numHojas = Math.ceil(total / ETIQUETAS_POR_HOJA);
+    const libres = numHojas * ETIQUETAS_POR_HOJA - total;
+
+    etqResumen.style.display = "block";
+    etqResumen.innerHTML = `${total} etiqueta${total === 1 ? '' : 's'} de ${distintos} producto${distintos === 1 ? '' : 's'} distinto${distintos === 1 ? '' : 's'}
+        → necesitas <strong>${numHojas} hoja${numHojas === 1 ? '' : 's'}</strong> A4 (${ETIQUETAS_POR_HOJA} etiquetas por hoja).
+        ${libres > 0
+            ? `En la última hoja quedan <span class="libre">${libres} espacio${libres === 1 ? '' : 's'} libre${libres === 1 ? '' : 's'}</span> — puedes subir cantidades para aprovecharlos.`
+            : `La última hoja queda completamente llena.`}`;
+
+    let html = "";
+    for (let h = 0; h < numHojas; h++) {
+        const grupo = items.slice(h * ETIQUETAS_POR_HOJA, (h + 1) * ETIQUETAS_POR_HOJA);
+        html += `<div class="rotulo-hoja">Hoja ${h + 1} de ${numHojas}</div><div class="hoja-etq">`;
+        for (let c = 0; c < ETIQUETAS_POR_HOJA; c++) {
+            if (c < grupo.length) {
+                const p = grupo[c];
+                html += `
+                    <div class="etq-etiqueta">
+                        <div class="nombre">${escapeHtml(p.nombre)}</div>
+                        <div class="precio">${formatoMoneda(p.precio)}</div>
+                        <svg data-codigo="${escapeHtml(p.codigo_barras)}"></svg>
+                    </div>`;
+            } else {
+                html += `<div class="etq-etiqueta vacia">Espacio libre</div>`;
+            }
+        }
+        html += `</div>`;
+    }
+    etqHojas.innerHTML = html;
+
+    if (typeof JsBarcode === 'undefined') {
+        mostrarToast("No se pudo cargar el generador de códigos de barras. Verifica tu conexión.", "error");
+        return;
+    }
+    etqHojas.querySelectorAll('svg[data-codigo]').forEach(svg => {
+        try {
+            JsBarcode(svg, svg.dataset.codigo, { format: "CODE128", width: 1.4, height: 34, fontSize: 9, margin: 2 });
+        } catch (err) {
+            console.warn("No se pudo generar el código", svg.dataset.codigo, err);
+        }
+    });
+}
+
+function renderizarTodoEtiquetas() {
+    firmaCatalogoEtiquetas = calcularFirmaCatalogoEtiquetas();
+    renderizarAvisoEtiquetas();
+    renderizarListaEtiquetas();
+    actualizarHojasEtiquetas();
+}
+
+function refrescarEtiquetasSiAbierto() {
+    if (!modalEtiquetas.classList.contains('visible')) return;
+    if (calcularFirmaCatalogoEtiquetas() === firmaCatalogoEtiquetas) return;
+    renderizarTodoEtiquetas();
+}
+
+function fijarCopias(id, valor) {
+    const n = parseInt(valor, 10);
+    copiasEtiquetas.set(String(id), isNaN(n) || n < 0 ? 0 : Math.min(n, 999));
+}
+
+btnEtiquetas.addEventListener('click', () => {
+    renderizarTodoEtiquetas();
+    abrirModal(modalEtiquetas);
+});
+
+etqBuscador.addEventListener('input', renderizarListaEtiquetas);
+
+etqLista.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-etq-delta]');
+    if (!btn) return;
+    const prod = buscarProducto(btn.dataset.etqId);
+    if (!prod) return;
+    fijarCopias(prod.id, copiasDe(prod) + parseInt(btn.dataset.etqDelta, 10));
+    // Solo se actualiza el número de esa fila (la lista no se vuelve a dibujar).
+    btn.parentElement.querySelector('input').value = copiasEtiquetas.get(String(prod.id));
+    actualizarHojasEtiquetas();
+});
+
+etqLista.addEventListener('change', (e) => {
+    const input = e.target.closest('input[data-etq-input]');
+    if (!input) return;
+    fijarCopias(input.dataset.etqInput, input.value);
+    input.value = copiasEtiquetas.get(String(input.dataset.etqInput));
+    actualizarHojasEtiquetas();
+});
+
+document.getElementById('etq-todo-uno').addEventListener('click', () => {
+    productosConCodigo().forEach(p => copiasEtiquetas.set(String(p.id), 1));
+    renderizarListaEtiquetas();
+    actualizarHojasEtiquetas();
+});
+document.getElementById('etq-todo-cero').addEventListener('click', () => {
+    productosConCodigo().forEach(p => copiasEtiquetas.set(String(p.id), 0));
+    renderizarListaEtiquetas();
+    actualizarHojasEtiquetas();
+});
+
+btnImprimirEtiquetas.addEventListener('click', () => {
+    const total = productosConCodigo().reduce((suma, p) => suma + copiasDe(p), 0);
+    if (total === 0) {
+        mostrarToast("No hay etiquetas para imprimir. Sube alguna cantidad con +.", "error");
+        return;
+    }
+    // Esta clase hace que, al imprimir, solo salgan las hojas de etiquetas.
+    document.body.classList.add('imprimiendo-etiquetas');
+    window.print();
+});
+window.addEventListener('afterprint', () => document.body.classList.remove('imprimiendo-etiquetas'));
 
 // ==========================================
 // 11. INSTALABLE (PWA) E INICIALIZACIÓN
